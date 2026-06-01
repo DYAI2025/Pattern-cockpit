@@ -1,0 +1,73 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;450;550;700&family=JetBrains+Mono:wght@300;500;700&family=Space+Grotesk:wght@300;550;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --font-display: "Space Grotesk", sans-serif;
+
+  /* Overriding standard Slate palette with Elegant Dark colors */
+  --color-slate-950: #0a0a0b;
+  --color-slate-900: #0c0c0e;
+  --color-slate-850: #111827;
+  --color-slate-800: #1f2937;
+  --color-slate-700: #374151;
+  --color-slate-600: #4b5563;
+  --color-slate-500: #6b7280;
+  --color-slate-400: #9ca3af;
+  --color-slate-300: #d1d5db;
+  --color-slate-200: #e5e7eb;
+  --color-slate-100: #f3f4f6;
+
+  /* Overriding standard Neutral/Gray palettes as well to preserve absolute consistency */
+  --color-gray-950: #0a0a0b;
+  --color-gray-900: #0c0c0e;
+  --color-gray-850: #111827;
+  --color-gray-850: #111827;
+  --color-gray-800: #1f2937;
+  --color-gray-700: #374151;
+
+  --color-zinc-950: #0a0a0b;
+  --color-zinc-900: #0c0c0e;
+  --color-zinc-850: #111827;
+  --color-zinc-800: #1f2937;
+  --color-zinc-700: #374151;
+}
+
+/* Custom styles for range slider and scrollbars */
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #10b981; /* Green accent matching Elegant Dark */
+  cursor: pointer;
+  border: 2px solid #0a0a0b;
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.6);
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0a0a0b;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #1f2937;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #374151;
+}
+
+/* Base background setup to prevent flash */
+body {
+  background-color: #0a0a0b;
+  color: #d1d5db;
+}
+

@@ -1,0 +1,6 @@
+{
+  "name": "Pattern AMP Cockpit",
+  "description": "Ein hoch-praezises 3D-Musterbeobachtungs-Cockpit fuer die agentische Simulation von Verhalten und psychologischen Mustern.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
