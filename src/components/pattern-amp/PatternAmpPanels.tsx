@@ -15,7 +15,11 @@ import {
   Sparkles,
   FileCode,
   CheckCircle,
-  FileText
+  FileText,
+  Server,
+  Wifi,
+  WifiOff,
+  RefreshCw
 } from "lucide-react";
 import {
   LineChart,
@@ -1031,9 +1035,249 @@ export const MiroExportPanel: React.FC = () => {
 /* MICROSERVICES & GATEWAY ARCHITECTURE PANEL - DEEP CORE SPECIFICATION       */
 /* -------------------------------------------------------------------------- */
 export const ArchitecturePanel: React.FC = () => {
-  const [activeSubTab, setActiveSubTab] = useState<"services" | "communication" | "gateway">("services");
+  const [activeSubTab, setActiveSubTab] = useState<"services" | "communication" | "gateway" | "discovery" | "deployments">("services");
   const [copiedYaml, setCopiedYaml] = useState(false);
   const [selectedService, setSelectedService] = useState<string>("user-service");
+
+  // Dynamic discovery interactive simulation states
+  const [registryNodes, setRegistryNodes] = useState([
+    { id: "user-node-1", service: "user-service", ip: "10.244.1.18", port: 8080, health: "healthy", rtt: "12ms" },
+    { id: "pattern-node-1", service: "pattern-service", ip: "10.244.2.33", port: 8081, health: "healthy", rtt: "8ms" },
+    { id: "simulation-node-1", service: "simulation-service", ip: "10.244.3.45", port: 8082, health: "healthy", rtt: "15ms" },
+    { id: "exporter-node-1", service: "exporter-service", ip: "10.244.4.12", port: 8083, health: "degraded", rtt: "440ms" },
+  ]);
+
+  const [simulationLogs, setSimulationLogs] = useState<string[]>( [
+    "[Consul Core] Service Discovery Registry initialized successfully on port 8500.",
+    "[Discovery Info] Local Cluster DNS bound to 'consul.service.internal:53'.",
+    "[Registry Sync] user-service-node-1 registered successfully at 10.244.1.18:8080.",
+    "[Registry Sync] pattern-service-node-1 registered successfully at 10.244.2.33:8081.",
+    "[Registry Sync] simulation-service-node-1 registered successfully at 10.244.3.45:8082.",
+    "[Health Check] Telemetry daemon running active health checks with 6s probe. TTL check live."
+  ]);
+
+  const [selectedDeploymentFile, setSelectedDeploymentFile] = useState<"docker" | "k8s" | "consul" | "helm">("docker");
+  const [copiedDeploymentContent, setCopiedDeploymentContent] = useState(false);
+
+  // Dynamic discovery simulator interactions
+  const handleAddReplica = () => {
+    const randomId = Math.floor(Math.random() * 100) + 2;
+    const newIp = `10.244.3.${50 + randomId}`;
+    const newNode = {
+      id: `simulation-node-${randomId}`,
+      service: "simulation-service",
+      ip: newIp,
+      port: 8082,
+      health: "healthy",
+      rtt: `${Math.floor(Math.random() * 8) + 12}ms`
+    };
+    
+    setRegistryNodes(prev => [...prev, newNode]);
+    setSimulationLogs(prev => [
+      ...prev,
+      `[Consul Discovery] [REGISTER] Dynamic registration packet received from node IP ${newIp}:8082`,
+      `[Health Probe] Initiated service-health-check TCP connection on port 8082`,
+      `[Health Check] http://${newIp}:8082/api/v1/simulations/status -> HTTP 200 OK (5ms)`,
+      `[Consul Catalog] Node "${newNode.id}" registered successfully as ONLINE and added to the cluster pool (Pool size scaled).`,
+    ]);
+  };
+
+  const handleFailExporter = () => {
+    setRegistryNodes(prev => prev.map(n => {
+      if (n.service === "exporter-service") {
+        return { ...n, health: "critical", rtt: "N/A" };
+      }
+      return n;
+    }));
+    setSimulationLogs(prev => [
+      ...prev,
+      `[Health Monitor] [WARN] TCP health probe timed out for exporter-service at 10.244.4.12:8083`,
+      `[Health Monitor] [CRITICAL] Eviction warning triggered: retry 1 of 3 failed.`,
+      `[Health Monitor] [CRITICAL] Eviction warning triggered: retry 2 of 3 failed.`,
+      `[Consul Catalog] [EVICTION] Node "exporter-node-1" failed response. Evicted from the active catalog registry.`,
+      `[DNS Dynamic Resolution] DNS queries for 'exporter-service.service.consul' now return empty set (0 healthy endpoints).`,
+    ]);
+  };
+
+  const handleRecoverExporter = () => {
+    setRegistryNodes(prev => prev.map(n => {
+      if (n.service === "exporter-service") {
+        return { ...n, health: "healthy", rtt: "32ms" };
+      }
+      return n;
+    }));
+    setSimulationLogs(prev => [
+      ...prev,
+      `[Health Monitor] [RECOVER] TCP health probe successful for exporter-service at 10.244.4.12:8083`,
+      `[Consul Catalog] Node "exporter-node-1" marked as stable state. Reinserted into active rotation catalog.`,
+      `[DNS Dynamic Resolution] DNS queries for 'exporter-service.service.consul' restored back to [10.244.4.12:8083].`,
+    ]);
+  };
+
+  const handleResetRegistry = () => {
+    setRegistryNodes([
+      { id: "user-node-1", service: "user-service", ip: "10.244.1.18", port: 8080, health: "healthy", rtt: "12ms" },
+      { id: "pattern-node-1", service: "pattern-service", ip: "10.244.2.33", port: 8081, health: "healthy", rtt: "8ms" },
+      { id: "simulation-node-1", service: "simulation-service", ip: "10.244.3.45", port: 8082, health: "healthy", rtt: "15ms" },
+      { id: "exporter-node-1", service: "exporter-service", ip: "10.244.4.12", port: 8083, health: "degraded", rtt: "440ms" },
+    ]);
+    setSimulationLogs([
+      "[Consul Core] Service Discovery Registry restarted.",
+      "[Discovery Info] Local DNS listener bound to pool 'consul.internal:53'.",
+      "[Registry Sync] Resetted node allocations to standard baseline configurations.",
+    ]);
+  };
+
+  const deploymentDocs = {
+    docker: {
+      title: "Dockerfile.multistage",
+      desc: "Optimiertes mehrstufiges Docker-Image für Produktions-Rollouts. Reduziert die Imagegröße drastisch und sperrt Root-Berechtigungen.",
+      code: `# --- Build-Stufe (Assets-Minifizierung und TS-Transpilierung) ---
+FROM node:20-alpine AS builder
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci
+COPY . .
+RUN npm run build && npm prune --production
+
+# --- Produktions-Stufe (Extrem schlankes, sicheres Image) ---
+FROM node:20-alpine
+WORKDIR /app
+ENV NODE_ENV=production
+RUN apk add --no-cache curl
+
+# Systemsicherheits-Härtung: Service im unprivilegierten Benutzer-Context betreiben
+USER node
+COPY --from=builder --chown=node:node /app/package.json ./package.json
+COPY --from=builder --chown=node:node /app/node_modules ./node_modules
+COPY --from=builder --chown=node:node /app/dist ./dist
+
+EXPOSE 3000
+
+# Dynamischer Healthcheck für Container-Runtimes (Docker / ECS)
+HEALTHCHECK --interval=12s --timeout=3s --start-period=8s --retries=3 \\
+  CMD curl -f http://localhost:3000/api/health || exit 1
+
+ENTRYPOINT ["node", "dist/server.js"]`
+    },
+    k8s: {
+      title: "pattern-service-deployment.yaml",
+      desc: "Kubernetes Manifest mit integrierten Annotations für automatisches Consul Connect Dynamic Proxy Sidecar Injection & Prometheus Metrics Scrapes.",
+      code: `apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pattern-service
+  namespace: pattern-amp
+  labels:
+    app: pattern-service
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: pattern-service
+  template:
+    metadata:
+      labels:
+        app: pattern-service
+      annotations:
+        # Dynamische Consul Connect Service-Mesh & Sidecar Autoinjektion
+        consul.hashicorp.com/connect-inject: "true"
+        consul.hashicorp.com/connect-service: "pattern-service"
+        consul.hashicorp.com/connect-service-port: "8081"
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8081"
+    spec:
+      containers:
+      - name: pattern-service
+        image: pattern-amp/pattern-service:v1.4.0
+        ports:
+        - containerPort: 8081
+          name: http
+        resources:
+          limits:
+            cpu: "500m"
+            memory: 512Mi
+          requests:
+            cpu: "100m"
+            memory: 128Mi
+        livenessProbe:
+          httpGet:
+            path: /api/v1/health
+            port: 8081
+          initialDelaySeconds: 15
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /api/v1/health
+            port: 8081
+          initialDelaySeconds: 5
+          periodSeconds: 5`
+    },
+    consul: {
+      title: "consul-service-registration.json",
+      desc: "Deklaratives JSON-Modell zur Registrierung von Microservice-Instanzen im Consul Catalog inkl. TTL- und HTTP/gRPC-Sub-Healthchecks.",
+      code: `{
+  "service": {
+    "name": "simulation-service",
+    "id": "simulation-worker-01-prod",
+    "tags": [
+      "primary-run-engine",
+      "v2.4.0",
+      "gRPC-compliant"
+    ],
+    "port": 8082,
+    "address": "10.244.3.45",
+    "checks": [
+      {
+        "id": "simulation-http-probe",
+        "name": "Run-Kern HTTP Statuscheck",
+        "http": "http://10.244.3.45:8082/api/v1/simulations/status",
+        "method": "GET",
+        "interval": "10s",
+        "timeout": "3s"
+      },
+      {
+        "id": "simulation-grpc-probe",
+        "name": "gRPC Backend-Worker Handshake Check",
+        "grpc": "10.244.3.45:9000",
+        "interval": "5s",
+        "timeout": "2s"
+      }
+    ]
+  }
+}`
+    },
+    helm: {
+      title: "helm-values-override.yaml",
+      desc: "Helm Chart Konfigurations-Werte für Hochverfügbarkeits-Szenarien, HPA (Horizontal Pod Autoscaling) Trigger und Consul Discovery-Bindung.",
+      code: `# Zentrale Werte zur automatisisierten Skalierung & Registry-Verbindung
+global:
+  environment: production
+  serviceRegistry: consul
+  dnsServer: 10.244.0.10
+
+simulationService:
+  replicaCount: 3
+  image:
+    repository: pattern-amp/simulation-service
+    tag: v2.4.0
+    pullPolicy: IfNotPresent
+  
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 12
+    targetCPUUtilizationPercentage: 75
+    targetMemoryUtilizationPercentage: 80
+
+  ingress:
+    enabled: true
+    hosts:
+      - host: gateway.internal.cluster
+        paths:
+          - path: /api/v1/simulations`
+    }
+  };
 
   const rawKongConfig = `_format_version: "2.1"
 services:
@@ -1191,7 +1435,7 @@ services:
         </div>
 
         {/* Subtab selection */}
-        <div className="flex bg-slate-950 p-1 border border-slate-850 rounded-lg shrink-0">
+        <div className="flex flex-wrap gap-1 bg-slate-950 p-1 border border-slate-850 rounded-lg shrink-0">
           <button
             onClick={() => setActiveSubTab("services")}
             className={`text-[10px] font-mono font-bold px-3 py-1.5 rounded transition-all ${
@@ -1216,11 +1460,31 @@ services:
             onClick={() => setActiveSubTab("gateway")}
             className={`text-[10px] font-mono font-bold px-3 py-1.5 rounded transition-all ${
               activeSubTab === "gateway"
-                ? "bg-slate-800 text-violet-450"
+                ? "bg-slate-800 text-violet-400"
                 : "text-slate-400 hover:text-slate-100"
             }`}
           >
             3. Kong API-Gateway
+          </button>
+          <button
+            onClick={() => setActiveSubTab("discovery")}
+            className={`text-[10px] font-mono font-bold px-3 py-1.5 rounded transition-all ${
+              activeSubTab === "discovery"
+                ? "bg-slate-800 text-amber-400"
+                : "text-slate-400 hover:text-slate-100"
+            }`}
+          >
+            4. Service-Discovery
+          </button>
+          <button
+            onClick={() => setActiveSubTab("deployments")}
+            className={`text-[10px] font-mono font-bold px-3 py-1.5 rounded transition-all ${
+              activeSubTab === "deployments"
+                ? "bg-slate-800 text-pink-400"
+                : "text-slate-400 hover:text-slate-100"
+            }`}
+          >
+            5. K8s & DevOps
           </button>
         </div>
       </div>
@@ -1488,6 +1752,214 @@ services:
 
             <div className="bg-slate-900/60 p-2.5 font-mono text-[9px] text-slate-500 text-center border-t border-slate-850">
               KONG GATEWAY SERVICE-MAPPER • VERSION 2.1 • ZERO DOWNTIME DEPLOYMENT
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SUBTAB CONTENT 4: SERVICE DISCOVERY & CATALOG REGISTRY */}
+      {activeSubTab === "discovery" && (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          {/* Discovery Architecture Specs List (Left, 5 cols) */}
+          <div className="lg:col-span-5 space-y-4">
+            <div className="bg-slate-950/60 p-4 border border-slate-850 rounded-xl">
+              <span className="text-[10px] font-mono text-amber-500 uppercase font-bold tracking-wider animate-pulse">Dynamische Registrierung & Erkennung</span>
+              <h3 className="text-sm font-bold text-slate-100 mt-1 font-sans">Consul / K8s DNS Service-Registry</h3>
+              <p className="text-slate-400 text-xs mt-2 leading-relaxed font-sans">
+                Damit Services im dynamischen Cloud-Cluster nicht mit statischen IP-Adressen konfiguriert werden müssen, nutzen wir **Consul** (oder das integrierte Kubernetes Kube-DNS).
+              </p>
+              <ul className="text-xs text-slate-300 space-y-2 mt-3 list-none font-sans">
+                <li className="flex items-start gap-2">
+                  <span className="text-amber-500 shrink-0 mt-0.5">●</span>
+                  <span><strong>Self-Registration:</strong> Jeder Microservice meldet sich beim Booten per HTTP POST mit seiner Host-IP und Portnummer an.</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-amber-500 shrink-0 mt-0.5">●</span>
+                  <span><strong>Active Telemetry:</strong> Der Registry-Daemon pingt registrierte Instanzen alle 6s an (Probes). Antwortet eine Instanz nicht, wird sie evicted.</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-amber-500 shrink-0 mt-0.5">●</span>
+                  <span><strong>Discovery via DNS / REST:</strong> Ruft ein Service einen anderen auf, delegiert er die Namensauflösung an das lokale <code className="font-mono text-slate-300 text-[10px]">consul</code> oder K8s CoreDNS.</span>
+                </li>
+              </ul>
+            </div>
+
+            {/* Simulated actions */}
+            <div className="bg-[#0c0c0e] border border-slate-800 rounded-xl p-4">
+              <h4 className="text-[10px] font-mono text-slate-500 uppercase font-bold mb-3">Ausfallsicherheit- & Skalierungs-Simulator</h4>
+              <p className="text-[11px] text-slate-400 font-sans mb-4">
+                Testen Sie die Live-Reaktionen des Katalogs und Dynamic-DNS-Pools bei plötzlichen Lastspitzen oder Netzwerkausfällen:
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={handleAddReplica}
+                  className="px-3 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-lg text-[10px] font-mono font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <Server className="w-3.5 h-3.5" />
+                  + Node hinzufügen
+                </button>
+                <button
+                  onClick={handleFailExporter}
+                  className="px-3 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 rounded-lg text-[10px] font-mono font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <WifiOff className="w-3.5 h-3.5" />
+                  Exporter kappen
+                </button>
+                <button
+                  onClick={handleRecoverExporter}
+                  className="px-3 py-2 bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 border border-sky-500/30 rounded-lg text-[10px] font-mono font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <Wifi className="w-3.5 h-3.5" />
+                  Exporter heilen
+                </button>
+                <button
+                  onClick={handleResetRegistry}
+                  className="px-3 py-2 bg-slate-800 hover:bg-slate-705 text-slate-300 border border-slate-700 rounded-lg text-[10px] font-mono font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  Zurücksetzen
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Interactive State & Terminal (Right, 7 cols) */}
+          <div className="lg:col-span-7 flex flex-col gap-4">
+            {/* Live Registry Table List */}
+            <div className="bg-slate-950/30 border border-slate-850 rounded-xl p-4">
+              <span className="text-[9px] font-mono text-slate-500 uppercase tracking-widest block mb-2">Aktive Service-Zuweisung im Consul DNS-Pool</span>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left font-mono text-[10.5px]">
+                  <thead>
+                    <tr className="border-b border-slate-850 pb-2 text-slate-500 text-[9px] uppercase">
+                      <th className="py-2">Service ID</th>
+                      <th className="py-2">Servicename</th>
+                      <th className="py-2">Host IP Address</th>
+                      <th className="py-2 text-center">Port</th>
+                      <th className="py-2 text-right">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {registryNodes.map((n, i) => (
+                      <tr key={i} className="border-b border-slate-850/40 hover:bg-slate-950/20">
+                        <td className="py-2 font-bold text-slate-300">{n.id}</td>
+                        <td className="py-2 text-slate-400">{n.service}</td>
+                        <td className="py-2 text-slate-400">{n.ip}</td>
+                        <td className="py-2 text-center text-slate-400">{n.port}</td>
+                        <td className="py-2 text-right">
+                          <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[8px] font-bold uppercase ${
+                            n.health === "healthy" ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" :
+                            n.health === "degraded" ? "bg-amber-500/10 text-amber-400 border border-amber-500/20 animate-pulse" :
+                            "bg-red-500/10 text-red-400 border border-red-500/20 font-bold"
+                          }`}>
+                            <span className={`w-1 h-1 rounded-full ${n.health === "healthy" ? "bg-emerald-500" : n.health === "degraded" ? "bg-amber-500" : "bg-red-550 animate-ping"}`} />
+                            {n.health}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Simulated Live Console Logs */}
+            <div className="bg-slate-950 border border-slate-850 rounded-xl overflow-hidden shadow-2xl flex-1 flex flex-col justify-between min-h-[180px]">
+              <div className="bg-slate-900 px-4 py-1.5 border-b border-slate-850 flex items-center justify-between">
+                <span className="text-[10px] font-mono text-slate-400 font-bold flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-red-400" />
+                  <span className="w-2.5 h-2.5 rounded-full bg-amber-400" />
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
+                  consul-sync-daemon.log
+                </span>
+                <span className="text-[9px] font-mono text-slate-600 block">SYSTEM OUT</span>
+              </div>
+              <div className="p-3 font-mono text-[9.5px] text-slate-300 space-y-1 h-[150px] overflow-y-auto scrollbar">
+                {simulationLogs.map((log, i) => {
+                  let logColor = "text-slate-400";
+                  if (log.includes("[CRITICAL]") || log.includes("[EVICTION]")) logColor = "text-red-400 font-bold";
+                  else if (log.includes("[WARN]")) logColor = "text-amber-400";
+                  else if (log.includes("[RECOVER]") || log.includes("registered successfully") || log.includes("ONLINE")) logColor = "text-emerald-400";
+                  else if (log.includes("[REGISTER]")) logColor = "text-sky-400";
+
+                  return (
+                    <div key={i} className={`${logColor} leading-relaxed`}>
+                      {log}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SUBTAB CONTENT 5: KUBERNETES & DEVOPS INFRASTRUCTURE DEPLOYMENTS */}
+      {activeSubTab === "deployments" && (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          {/* File selector buttons (Left, 4 cols) */}
+          <div className="lg:col-span-4 space-y-3">
+            <div className="bg-slate-950/60 p-4 border border-slate-850 rounded-xl">
+              <span className="text-[10px] font-mono text-pink-500 uppercase font-bold tracking-wider">DevOps & Infrastruktur</span>
+              <h3 className="text-sm font-bold text-slate-200 mt-1 font-sans">Deklarative Deployment-Spezifikationen</h3>
+              <p className="text-slate-400 text-xs mt-2 leading-relaxed font-sans">
+                Reviewen Sie den vollständigen Produktions-Setup. Nutzen Sie die linksbündige Navigation, um zwischen Dockerfiles, Helm values, Consul Registrierungen und K8s Deployment YAMLs zu wechseln.
+              </p>
+            </div>
+
+            <div className="bg-slate-950/40 border border-slate-850 rounded-xl p-3 space-y-1.5">
+              <span className="text-[9px] font-mono text-slate-500 uppercase block mb-1">Infrastruktur-Dateien</span>
+              {(Object.keys(deploymentDocs) as Array<keyof typeof deploymentDocs>).map((fileKey) => {
+                const doc = deploymentDocs[fileKey];
+                const isSelected = selectedDeploymentFile === fileKey;
+                return (
+                  <button
+                    key={fileKey}
+                    onClick={() => {
+                      setSelectedDeploymentFile(fileKey);
+                      setCopiedDeploymentContent(false);
+                    }}
+                    className={`w-full text-left p-2.5 rounded-lg border text-xs font-mono transition-all flex flex-col justify-start cursor-pointer ${
+                      isSelected
+                        ? "bg-[#1f1625]/65 border-pink-500/40 text-pink-400 shadow-[0_0_10px_rgba(236,72,153,0.06)]"
+                        : "bg-slate-950/40 border-slate-850/60 text-slate-400 hover:text-slate-200 hover:border-slate-800"
+                    }`}
+                  >
+                    <span className="font-bold">{doc.title}</span>
+                    <span className="text-[9px] text-slate-500 text-sans mt-0.5 truncate max-w-full font-sans">{doc.desc}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Code display module (Right, 8 cols) */}
+          <div className="lg:col-span-8 bg-slate-950 border border-slate-850 rounded-xl overflow-hidden flex flex-col justify-between">
+            <div className="bg-slate-900 px-4 py-2 flex items-center justify-between border-b border-slate-850">
+              <div className="flex items-center gap-2">
+                <FileCode className="w-4 h-4 text-pink-400" />
+                <span className="font-mono text-[10px] text-slate-300 font-bold">
+                  {deploymentDocs[selectedDeploymentFile].title}
+                </span>
+              </div>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(deploymentDocs[selectedDeploymentFile].code);
+                  setCopiedDeploymentContent(true);
+                  setTimeout(() => setCopiedDeploymentContent(false), 2000);
+                }}
+                className="text-[10px] font-mono text-slate-400 hover:text-white bg-slate-950 hover:bg-slate-800 border border-slate-800 px-2 py-1 rounded transition-all flex items-center gap-1 cursor-pointer"
+              >
+                {copiedDeploymentContent ? "Kopiert!" : "Code Kopieren"}
+              </button>
+            </div>
+
+            <div className="p-3 bg-slate-950 text-slate-300 font-mono text-[10px] overflow-y-auto leading-relaxed h-[360px] scrollbar select-all">
+              <pre>{deploymentDocs[selectedDeploymentFile].code}</pre>
+            </div>
+
+            <div className="bg-slate-900/60 p-2.5 font-mono text-[9px] text-slate-500 text-center border-t border-slate-850">
+              DEVOPS PROVISIONING SPECIFICATION • SECURE NON-ROOT PRODUCTION CONTAINERS
             </div>
           </div>
         </div>
